@@ -1,151 +1,160 @@
 import streamlit as st
-import pandas as pd
-import math
-from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+import time
+from sklearn.datasets import make_classification
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+# -------------------------------------------------
+# Page config
+# -------------------------------------------------
+st.set_page_config(layout="wide")
+st.title("Logistic Regression – Gradient Descent Visualization")
+
+st.markdown("""
+This demo shows **Logistic Regression trained using Gradient Descent**.
+
+• Left: **Decision boundary evolution**  
+• Right: **Contour plot of logistic loss**  
+
+You can only choose the **polynomial degree** of the model.
+""")
+
+# -------------------------------------------------
+# Sidebar (ONLY DEGREE)
+# -------------------------------------------------
+st.sidebar.header("Model Complexity")
+
+degree = st.sidebar.slider(
+    "Polynomial Degree",
+    min_value=1,
+    max_value=4,
+    value=1
 )
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+run = st.sidebar.button("▶ Run Gradient Descent")
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# -------------------------------------------------
+# Dataset (binary classification)
+# -------------------------------------------------
+X, y = make_classification(
+    n_samples=200,
+    n_features=1,
+    n_redundant=0,
+    n_informative=1,
+    n_clusters_per_class=1,
+    flip_y=0.05,
+    random_state=7
+)
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+X = X.flatten()
+y = y.astype(float)
+n = len(X)
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+# -------------------------------------------------
+# Feature expansion
+# -------------------------------------------------
+def poly_features(x, degree):
+    return np.column_stack([x**i for i in range(degree + 1)])
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+X_poly = poly_features(X, degree)
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
+# -------------------------------------------------
+# Sigmoid & loss
+# -------------------------------------------------
+def sigmoid(z):
+    return 1 / (1 + np.exp(-z))
+
+def log_loss(y, y_hat):
+    eps = 1e-9
+    return -np.mean(
+        y * np.log(y_hat + eps) +
+        (1 - y) * np.log(1 - y_hat + eps)
     )
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+# -------------------------------------------------
+# Initialize parameters
+# -------------------------------------------------
+theta = np.zeros(degree + 1)
+lr = 0.1
+steps = 60
 
-    return gdp_df
+# -------------------------------------------------
+# Fixed plot limits
+# -------------------------------------------------
+x_min, x_max = X.min() - 1, X.max() + 1
+y_min, y_max = -0.2, 1.2
 
-gdp_df = get_gdp_data()
+# -------------------------------------------------
+# Contour (only w0 & w1)
+# -------------------------------------------------
+w0_vals = np.linspace(-10, 10, 100)
+w1_vals = np.linspace(-10, 10, 100)
+W0, W1 = np.meshgrid(w0_vals, w1_vals)
+Z = np.zeros_like(W0)
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+X_base = poly_features(X, 1)
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
+for i in range(W0.shape[0]):
+    for j in range(W0.shape[1]):
+        logits = W0[i, j] + W1[i, j] * X
+        Z[i, j] = log_loss(y, sigmoid(logits))
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+# -------------------------------------------------
+# Layout
+# -------------------------------------------------
+col1, col2 = st.columns(2)
+boundary_plot = col1.empty()
+contour_plot = col2.empty()
 
-# Add some spacing
-''
-''
+# -------------------------------------------------
+# Gradient Descent Animation
+# -------------------------------------------------
+if run:
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+    for step in range(steps):
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+        # ---------- Forward ----------
+        logits = X_poly @ theta
+        y_hat = sigmoid(logits)
 
-countries = gdp_df['Country Code'].unique()
+        # ---------- Gradient ----------
+        grad = (1 / n) * X_poly.T @ (y_hat - y)
+        theta -= lr * grad
 
-if not len(countries):
-    st.warning("Select at least one country")
+        # ---------- LEFT: Decision boundary ----------
+        fig1, ax1 = plt.subplots()
 
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+        ax1.scatter(X[y == 0], y[y == 0],
+                    color="blue", label="Class 0")
+        ax1.scatter(X[y == 1], y[y == 1],
+                    color="red", label="Class 1")
 
-''
-''
-''
+        x_plot = np.linspace(x_min, x_max, 300)
+        Xp = poly_features(x_plot, degree)
+        y_prob = sigmoid(Xp @ theta)
 
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
+        ax1.plot(x_plot, y_prob,
+                 color="black", linewidth=2)
 
-st.header('GDP over time', divider='gray')
+        ax1.axhline(0.5, linestyle="--", color="gray")
+        ax1.set_xlim(x_min, x_max)
+        ax1.set_ylim(y_min, y_max)
+        ax1.set_title(f"Decision Boundary – Step {step+1}")
+        ax1.set_xlabel("X")
+        ax1.set_ylabel("P(y=1)")
+        ax1.legend()
 
-''
+        boundary_plot.pyplot(fig1)
 
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
+        # ---------- RIGHT: Contour ----------
+        fig2, ax2 = plt.subplots()
+        ax2.contour(W0, W1, Z, levels=30, cmap="viridis")
+        ax2.scatter(theta[0], theta[1], color="red", s=60)
 
-''
-''
+        ax2.set_title("Logistic Loss Contour (w0, w1)")
+        ax2.set_xlabel("w0 (bias)")
+        ax2.set_ylabel("w1 (weight)")
 
+        contour_plot.pyplot(fig2)
 
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+        time.sleep(0.25)
