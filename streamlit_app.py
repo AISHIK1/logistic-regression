@@ -12,21 +12,39 @@ st.title("Polynomial Regression – Gradient Descent Visualization")
 st.markdown("""
 **Polynomial Regression using Gradient Descent (from scratch)**
 
-• Left: Polynomial curve evolving step-by-step  
-• Right: Contour plot of loss J(w₀, w₁)  
-• You can increase degree **up to 1000**  
+• Degree, learning rate, and epochs are **typed manually**  
+• Only the **curve moves** – data is fixed  
+• Left: Polynomial curve evolution  
+• Right: Loss contour (w₀, w₁)
 """)
 
 # -------------------------------------------------
-# Sidebar (ONLY DEGREE)
+# Sidebar inputs (TYPED, NOT SLIDERS)
 # -------------------------------------------------
-st.sidebar.header("Model Complexity")
+st.sidebar.header("Hyperparameters")
 
-degree = st.sidebar.slider(
+degree = st.sidebar.number_input(
     "Polynomial Degree",
     min_value=1,
-    max_value=1000,
-    value=2
+    max_value=2000,
+    value=2,
+    step=1
+)
+
+lr = st.sidebar.number_input(
+    "Learning Rate (η)",
+    min_value=0.000001,
+    max_value=1.0,
+    value=0.01,
+    format="%.6f"
+)
+
+epochs = st.sidebar.number_input(
+    "Epochs",
+    min_value=1,
+    max_value=10000,
+    value=60,
+    step=1
 )
 
 run = st.sidebar.button("▶ Run Gradient Descent")
@@ -49,7 +67,7 @@ n = len(X)
 X_norm = X / np.max(np.abs(X))
 
 # -------------------------------------------------
-# Polynomial features
+# Polynomial feature expansion
 # -------------------------------------------------
 def poly_features(x, degree):
     return np.column_stack([x**i for i in range(degree + 1)])
@@ -61,14 +79,11 @@ X_poly = poly_features(X_norm, degree)
 # -------------------------------------------------
 theta = np.zeros(degree + 1)
 
-lr = 0.01
-steps = 60
-
 # -------------------------------------------------
 # Loss
 # -------------------------------------------------
-def mse(y, y_hat):
-    return np.mean((y - y_hat) ** 2)
+def mse(y_true, y_pred):
+    return np.mean((y_true - y_pred) ** 2)
 
 # -------------------------------------------------
 # Fixed plotting limits
@@ -77,7 +92,7 @@ x_min, x_max = X.min() - 0.5, X.max() + 0.5
 y_min, y_max = y.min() - 5, y.max() + 5
 
 # -------------------------------------------------
-# Contour for (w0, w1) ONLY
+# Contour for (w0, w1) only
 # -------------------------------------------------
 w0_vals = np.linspace(-10, 10, 100)
 w1_vals = np.linspace(-10, 10, 100)
@@ -101,16 +116,16 @@ contour_plot = col2.empty()
 # -------------------------------------------------
 if run:
 
-    for step in range(steps):
+    for epoch in range(epochs):
 
-        # ---------- Forward ----------
+        # -------- Forward --------
         y_hat = X_poly @ theta
 
-        # ---------- Gradient ----------
+        # -------- Gradient --------
         grad = (2 / n) * X_poly.T @ (y_hat - y)
         theta -= lr * grad
 
-        # ---------- LEFT: Polynomial curve ----------
+        # -------- LEFT: Polynomial curve --------
         fig1, ax1 = plt.subplots()
 
         ax1.scatter(X, y, color="blue", alpha=0.6, label="Data")
@@ -118,21 +133,20 @@ if run:
         x_plot = np.linspace(x_min, x_max, 400)
         x_plot_norm = x_plot / np.max(np.abs(X))
         X_plot_poly = poly_features(x_plot_norm, degree)
-
         y_plot = X_plot_poly @ theta
 
         ax1.plot(x_plot, y_plot, color="red", linewidth=3)
 
         ax1.set_xlim(x_min, x_max)
         ax1.set_ylim(y_min, y_max)
-        ax1.set_title(f"Polynomial Curve – Step {step+1}")
+        ax1.set_title(f"Polynomial Curve – Epoch {epoch + 1}")
         ax1.set_xlabel("X")
         ax1.set_ylabel("y")
         ax1.legend()
 
         curve_plot.pyplot(fig1)
 
-        # ---------- RIGHT: Contour ----------
+        # -------- RIGHT: Contour --------
         fig2, ax2 = plt.subplots()
         ax2.contour(W0, W1, Z, levels=30, cmap="viridis")
         ax2.scatter(theta[0], theta[1], color="red", s=60)
@@ -143,4 +157,4 @@ if run:
 
         contour_plot.pyplot(fig2)
 
-        time.sleep(0.25)
+        time.sleep(0.2)
